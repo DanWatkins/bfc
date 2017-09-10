@@ -1,2 +1,2 @@
-# bfc
-batch file convert
+# dbfc
+distrubted batch file conversion

@@ -1,0 +1,6 @@
+[package]
+name = "dbfc"
+version = "0.1.0"
+authors = ["Dan Watkins <dwatkins@valpineware.com>"]
+
+[dependencies]
