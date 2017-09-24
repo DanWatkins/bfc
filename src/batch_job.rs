@@ -27,16 +27,19 @@ impl BatchJob {
             source_dir: source_dir,
             destination_dir: destination_dir,
             rules: HashMap::new(),
-            jobs: vec!(),
+            jobs: vec![],
         };
 
-        bj.rules.insert(String::from("mp4"), String::from("ffmpeg -i $file_path -c:v libx264 -preset slow"));
+        bj.rules.insert(
+            String::from("mp4"),
+            String::from("ffmpeg -i $file_path -c:v libx264 -preset slow"),
+        );
 
         bj
     }
 
     pub fn run(&mut self) {
-        let mut lst = vec!();
+        let mut lst = vec![];
 
         // flatten
         {
@@ -45,7 +48,7 @@ impl BatchJob {
             };
 
             match self.visit_dirs(Path::new(&self.source_dir.trim()), &mut add_it) {
-                Ok(x) => {},
+                Ok(x) => {}
                 Err(e) => {
                     println!("{:?}", e);
                     return;
@@ -56,7 +59,7 @@ impl BatchJob {
         println!("scanned {} files", lst.len());
 
         for file in lst.iter() {
-            self.jobs.push(Job { 
+            self.jobs.push(Job {
                 source_path: String::from(file.to_str().unwrap()),
                 source_sha256sum: String::new(),
                 destination_path: String::new(),
@@ -104,9 +107,7 @@ impl BatchJob {
             .arg("20")
             .arg(out_file.as_path())
             .spawn()
-            .unwrap_or_else(|e| {
-                panic!("failed to execute process: {}", e)
-            });
+            .unwrap_or_else(|e| panic!("failed to execute process: {}", e));
 
         output.wait().unwrap();
     }
