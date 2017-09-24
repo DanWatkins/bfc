@@ -1,23 +1,41 @@
+use std::collections::HashMap;
 use std::fs::{self, DirEntry};
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[derive(Serialize, Deserialize)]
+pub struct Job {
+    source_path: String,
+    source_sha256sum: String,
+    destination_path: String,
+    destination_sha256sum: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct BatchJob {
     source_dir: String,
     destination_dir: String,
+    rules: HashMap<String, String>,
+    jobs: Vec<Job>,
 }
 
 impl BatchJob {
     pub fn new(source_dir: String, destination_dir: String) -> BatchJob {
-        BatchJob {
+        let mut bj = BatchJob {
             source_dir: source_dir,
             destination_dir: destination_dir,
-        }
+            rules: HashMap::new(),
+            jobs: vec!(),
+        };
+
+        bj.rules.insert(String::from("mp4"), String::from("ffmpeg -i $file_path -c:v libx264 -preset slow"));
+
+        bj
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         let mut lst = vec!();
 
         // flatten
@@ -38,8 +56,12 @@ impl BatchJob {
         println!("scanned {} files", lst.len());
 
         for file in lst.iter() {
-            println!("converting {}", file.display());
-            self.convert_video(&file, self.destination_dir.trim());
+            self.jobs.push(Job { 
+                source_path: String::from(file.to_str().unwrap()),
+                source_sha256sum: String::new(),
+                destination_path: String::new(),
+                destination_sha256sum: String::new(),
+            });
         }
     }
 
