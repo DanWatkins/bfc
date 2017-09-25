@@ -1,6 +1,7 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::{self, DirEntry};
-use std::io;
+use std::fs::{self, DirEntry, File};
+use std::io::Result;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -38,7 +39,7 @@ impl BatchJob {
         bj
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         let mut lst = vec![];
 
         // flatten
@@ -47,28 +48,29 @@ impl BatchJob {
                 lst.push(x.path());
             };
 
-            match self.visit_dirs(Path::new(&self.source_dir.trim()), &mut add_it) {
-                Ok(x) => {}
-                Err(e) => {
-                    println!("{:?}", e);
-                    return;
-                }
-            };
+            self.visit_dirs(Path::new(&self.source_dir.trim()), &mut add_it)?;
         }
 
         println!("scanned {} files", lst.len());
 
         for file in lst.iter() {
+            let source_path = file.to_str().unwrap();
+            println!("processing {}", source_path);
+            let mut file = File::open(source_path).expect("Unable to create config file");
+            let hash = Sha256::digest_reader(&mut file)?;
+
             self.jobs.push(Job {
-                source_path: String::from(file.to_str().unwrap()),
-                source_sha256sum: String::new(),
+                source_path: String::from(source_path),
+                source_sha256sum: String::from(format!("{:x}", hash)),
                 destination_path: String::new(),
                 destination_sha256sum: String::new(),
             });
         }
+
+        Ok(())
     }
 
-    fn visit_dirs(&self, dir: &Path, cb: &mut FnMut(&DirEntry)) -> io::Result<()> {
+    fn visit_dirs(&self, dir: &Path, cb: &mut FnMut(&DirEntry)) -> Result<()> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;

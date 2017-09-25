@@ -3,6 +3,7 @@ extern crate clap;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate sha2;
 
 pub mod batch_job;
 
@@ -10,7 +11,6 @@ use batch_job::*;
 use clap::{App, Arg, SubCommand};
 use serde_json::Error;
 use std::fs::File;
-use std::io;
 use std::io::Write;
 
 fn write_to_json_batch_job(batch_job: &BatchJob) -> Result<String, Error> {
@@ -67,8 +67,14 @@ fn main() {
             String::from(source_path),
             String::from(destination_path),
         );
-        bj.run();
-        println!("JSON result:");
+
+        if let Err(e) = bj.run() {
+            println!("Error occured while running batch job:\n{}", e);
+
+            return;
+        }
+
+        println!("Writing file out");
 
         match write_to_json_batch_job(&bj) {
             Ok(result) => {
