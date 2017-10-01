@@ -1,7 +1,10 @@
+extern crate serde_json;
+
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::{self, DirEntry, File};
-use std::io::Result;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -39,7 +42,7 @@ impl BatchJob {
         bj
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn init(&mut self) -> Result<(), Box<Error>> {
         let mut lst = vec![];
 
         // flatten
@@ -70,7 +73,24 @@ impl BatchJob {
         Ok(())
     }
 
-    fn visit_dirs(&self, dir: &Path, cb: &mut FnMut(&DirEntry)) -> Result<()> {
+    pub fn load_from_file(dir: &str) -> Result<BatchJob, Box<Error>> {
+        let filepath = format!("{}/dbfc.config", dir);
+        let mut file = File::open(filepath)?;
+        let mut buffer = String::new();
+        file.read_to_string(&mut buffer)?;
+        let bj: BatchJob = serde_json::from_str(&buffer)?;
+
+        Ok(bj)
+    }
+
+    pub fn run(&mut self) {
+        println!("Showing current BatchJob");
+        for rule in self.rules.iter() {
+            println!("{:?}", rule);
+        }
+    }
+
+    fn visit_dirs(&self, dir: &Path, cb: &mut FnMut(&DirEntry)) -> Result<(), Box<Error>> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
