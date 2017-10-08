@@ -103,7 +103,16 @@ impl BatchJob {
 
         for job in pending_jobs {
             let path = Path::new(job.source_path.as_str());
-            println!("Processing: {}", job.source_path);
+            let sub_path = match path.strip_prefix(self.source_dir.as_str()) {
+                Ok(sp) => sp,
+                Err(e) => {
+                    println!("   Could not get sub-path: {}", e);
+                    job.status = JobStatus::Error;
+                    continue;
+                }
+            };
+
+            println!("Processing: {:?}", sub_path);
 
             if !path.exists() {
                 job.status = JobStatus::Error;
@@ -142,6 +151,11 @@ impl BatchJob {
 
             let args: Vec<&str> = rule.split_whitespace().collect();
             println!("   {:?}", args);
+
+            let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
+            println!("   Writting to {:?}", out_path);
+
+            job.status = JobStatus::Done;
         }
     }
 
