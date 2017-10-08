@@ -9,12 +9,21 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[derive(Serialize, Deserialize, PartialEq)]
+pub enum JobStatus {
+    Pending,
+    Done,
+    Error,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Job {
     source_path: String,
     source_sha256sum: String,
     destination_path: String,
     destination_sha256sum: String,
+
+    status: JobStatus,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -67,6 +76,7 @@ impl BatchJob {
                 source_sha256sum: String::from(format!("{:x}", hash)),
                 destination_path: String::new(),
                 destination_sha256sum: String::new(),
+                status: JobStatus::Pending,
             });
         }
 
@@ -84,9 +94,54 @@ impl BatchJob {
     }
 
     pub fn run(&mut self) {
-        println!("Showing current BatchJob");
-        for rule in self.rules.iter() {
-            println!("{:?}", rule);
+        let pending_jobs = self.jobs
+            .iter_mut()
+            .filter(|j| j.status == JobStatus::Pending)
+            .collect::<Vec<&mut Job>>();
+
+        println!("{} pending jobs", pending_jobs.len());
+
+        for job in pending_jobs {
+            let path = Path::new(job.source_path.as_str());
+            println!("Processing: {}", job.source_path);
+
+            if !path.exists() {
+                job.status = JobStatus::Error;
+                println!("   Path does not exist");
+                continue;
+            } else if !path.is_file() {
+                job.status = JobStatus::Error;
+                println!("   Path is not a file");
+                continue;
+            }
+
+            let extension = match path.extension() {
+                Some(e) => match e.to_str() {
+                    Some(es) => es,
+                    None => {
+                        job.status = JobStatus::Error;
+                        println!("   Error converting to string");
+                        continue;
+                    }
+                },
+                None => {
+                    job.status = JobStatus::Done;
+                    println!("   No extension");
+                    continue;
+                }
+            };
+
+            let rule = match self.rules.get(extension) {
+                Some(r) => r,
+                None => {
+                    job.status = JobStatus::Done;
+                    println!("   No rule defined for extension '{}'", extension);
+                    continue;
+                }
+            };
+
+            let args: Vec<&str> = rule.split_whitespace().collect();
+            println!("   {:?}", args);
         }
     }
 
