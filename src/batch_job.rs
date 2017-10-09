@@ -1,6 +1,7 @@
 extern crate serde_json;
 
 use sha2::{Digest, Sha256};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, DirEntry, File};
@@ -31,7 +32,7 @@ pub struct BatchJob {
     source_dir: String,
     destination_dir: String,
     rules: HashMap<String, String>,
-    jobs: Vec<Job>,
+    jobs: Vec<RefCell<Job>>,
 }
 
 impl BatchJob {
@@ -71,13 +72,15 @@ impl BatchJob {
             let mut file = File::open(source_path).expect("Unable to create config file");
             let hash = Sha256::digest_reader(&mut file)?;
 
-            self.jobs.push(Job {
+            let job = Job {
                 source_path: String::from(source_path),
                 source_sha256sum: String::from(format!("{:x}", hash)),
                 destination_path: String::new(),
                 destination_sha256sum: String::new(),
                 status: JobStatus::Pending,
-            });
+            };
+
+            self.jobs.push(RefCell::new(job));
         }
 
         Ok(())
@@ -95,68 +98,70 @@ impl BatchJob {
 
     pub fn run(&mut self) {
         let pending_jobs = self.jobs
-            .iter_mut()
-            .filter(|j| j.status == JobStatus::Pending)
-            .collect::<Vec<&mut Job>>();
+            .iter()
+            .filter(|j| j.borrow().status == JobStatus::Pending)
+            .collect::<Vec<&RefCell<Job>>>();
 
         println!("{} pending jobs", pending_jobs.len());
 
-        for job in pending_jobs {
-            let path = Path::new(job.source_path.as_str());
-            let sub_path = match path.strip_prefix(self.source_dir.as_str()) {
-                Ok(sp) => sp,
-                Err(e) => {
-                    println!("   Could not get sub-path: {}", e);
+        for job_ref in pending_jobs {
+            let mut job = job_ref.borrow_mut();
+
+            match self.run_job(&job, self.source_dir.as_str()) {
+                Ok(_) => {
+                    job.status = JobStatus::Done;
+                }
+                Err(why) => {
                     job.status = JobStatus::Error;
-                    continue;
+                    println!("   {}", why);
                 }
-            };
-
-            println!("Processing: {:?}", sub_path);
-
-            if !path.exists() {
-                job.status = JobStatus::Error;
-                println!("   Path does not exist");
-                continue;
-            } else if !path.is_file() {
-                job.status = JobStatus::Error;
-                println!("   Path is not a file");
-                continue;
             }
-
-            let extension = match path.extension() {
-                Some(e) => match e.to_str() {
-                    Some(es) => es,
-                    None => {
-                        job.status = JobStatus::Error;
-                        println!("   Error converting to string");
-                        continue;
-                    }
-                },
-                None => {
-                    job.status = JobStatus::Done;
-                    println!("   No extension");
-                    continue;
-                }
-            };
-
-            let rule = match self.rules.get(extension) {
-                Some(r) => r,
-                None => {
-                    job.status = JobStatus::Done;
-                    println!("   No rule defined for extension '{}'", extension);
-                    continue;
-                }
-            };
-
-            let args: Vec<&str> = rule.split_whitespace().collect();
-            println!("   {:?}", args);
-
-            let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
-            println!("   Writting to {:?}", out_path);
-
-            job.status = JobStatus::Done;
         }
+    }
+
+    fn run_job(&self, job: &Job, source_dir: &str) -> Result<(), String> {
+        let path = Path::new(job.source_path.as_str());
+        let sub_path = match path.strip_prefix(source_dir) {
+            Ok(sp) => sp,
+            Err(e) => {
+                return Err(format!("   Could not get sub-path: {}", e));
+            }
+        };
+
+        println!("Processing: {:?}", sub_path);
+
+        if !path.exists() {
+            return Err(format!("   Path does not exist"));
+        } else if !path.is_file() {
+            return Err(format!("   Path is not a file"));
+        }
+
+        let extension = match path.extension() {
+            Some(e) => match e.to_str() {
+                Some(es) => es,
+                None => {
+                    return Err(format!("   Error converting to string"));
+                }
+            },
+            None => {
+                return Err(format!("   No extension"));
+            }
+        };
+
+        let rule = match self.rules.get(extension) {
+            Some(r) => r,
+            None => {
+                return Err(format!("   No rule defined for extension '{}'", extension));
+            }
+        };
+
+        let args: Vec<&str> = rule.split_whitespace().collect();
+        println!("   {:?}", args);
+
+        let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
+        println!("   Writting to {:?}", out_path);
+
+        Ok(())
     }
 
     fn visit_dirs(&self, dir: &Path, cb: &mut FnMut(&DirEntry)) -> Result<(), Box<Error>> {
