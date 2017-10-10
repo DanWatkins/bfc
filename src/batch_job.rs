@@ -155,7 +155,15 @@ impl BatchJob {
             }
         };
 
-        let args: Vec<&str> = rule.split_whitespace().collect();
+        // get args and replace any variables
+        let raw_args: Vec<&str> = rule.split_whitespace().collect();
+        let mut args = Vec::with_capacity(raw_args.len());
+        for arg in raw_args.iter() {
+            args.push(String::from(match *arg {
+                "$file_path" => path.to_str().unwrap(),
+                _ => arg,
+            }));
+        }
         println!("   {:?}", args);
 
         let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
@@ -176,6 +184,7 @@ impl BatchJob {
                 }
             }
         }
+
         Ok(())
     }
 
