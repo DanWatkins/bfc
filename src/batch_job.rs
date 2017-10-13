@@ -45,8 +45,8 @@ impl BatchJob {
         };
 
         bj.rules.insert(
-            String::from("mp4"),
-            String::from("ffmpeg -i $file_path -c:v libx264 -preset slow"),
+            String::from("avi"),
+            String::from("ffmpeg -i $file_path -c:v libx264 -preset slow $file_path_out"),
         );
 
         bj
@@ -155,19 +155,35 @@ impl BatchJob {
             }
         };
 
+        let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
+        println!("   Writting to {:?}", out_path);
+
         // get args and replace any variables
         let raw_args: Vec<&str> = rule.split_whitespace().collect();
         let mut args = Vec::with_capacity(raw_args.len());
         for arg in raw_args.iter() {
             args.push(String::from(match *arg {
                 "$file_path" => path.to_str().unwrap(),
+                "$file_path_out" => out_path.to_str().unwrap(),
                 _ => arg,
             }));
         }
         println!("   {:?}", args);
 
-        let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
-        println!("   Writting to {:?}", out_path);
+        // create the output path
+        if let Err(why) = fs::create_dir_all(out_path.parent().unwrap()) {
+            return Err(format!("   Unable to create out file directory: {}", why));
+        }
+
+        let command_name = String::from(args[0].as_str());
+        let command_args = &args[1..args.len()];
+        let command = Command::new(command_name)
+            .args(command_args)
+            .output()
+            .expect(format!("Failed to execute command").as_str());
+
+        println!("stdout: {}", String::from_utf8_lossy(&command.stdout));
+        println!("stderr: {}", String::from_utf8_lossy(&command.stderr));
 
         Ok(())
     }
