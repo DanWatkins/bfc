@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, DirEntry, File};
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -96,6 +97,17 @@ impl BatchJob {
         Ok(bj)
     }
 
+    pub fn save_to_file(&self) -> Result<(), Box<Error>> {
+        let json_result = serde_json::to_string_pretty(&self)?;
+
+        let config_filepath = format!("{}/dbfc.config", self.source_dir);
+        let mut file = File::create(config_filepath).expect("Unable to create config file");
+        file.write_all(json_result.as_bytes())
+            .expect("Unable to write to config file");
+
+        Ok(())
+    }
+
     pub fn run(&mut self) {
         let pending_jobs = self.jobs
             .iter()
@@ -116,6 +128,10 @@ impl BatchJob {
                     println!("   {}", why);
                 }
             }
+        }
+
+        if let Err(why) = self.save_to_file() {
+            println!("Failed to save batch job state: {}", why);
         }
     }
 
