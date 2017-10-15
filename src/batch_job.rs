@@ -193,13 +193,21 @@ impl BatchJob {
 
         let command_name = String::from(args[0].as_str());
         let command_args = &args[1..args.len()];
-        let command = Command::new(command_name)
+        let command = Command::new(&command_name)
             .args(command_args)
             .output()
             .expect(format!("Failed to execute command").as_str());
 
         println!("stdout: {}", String::from_utf8_lossy(&command.stdout));
         println!("stderr: {}", String::from_utf8_lossy(&command.stderr));
+
+        if !command.status.success() {
+            return Err(format!(
+                "    Command '{}' failed with exit code {:?}",
+                &command_name,
+                command.status.code()
+            ));
+        }
 
         Ok(())
     }
