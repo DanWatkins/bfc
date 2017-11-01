@@ -8,7 +8,6 @@ use std::fs::{self, DirEntry, File};
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -119,7 +118,7 @@ impl BatchJob {
         for job_ref in pending_jobs {
             let mut job = job_ref.borrow_mut();
 
-            match self.run_job(&job, self.source_dir.as_str()) {
+            match self.run_job(&mut job, self.source_dir.as_str()) {
                 Ok(_) => {
                     job.status = JobStatus::Done;
                 }
@@ -135,7 +134,7 @@ impl BatchJob {
         }
     }
 
-    fn run_job(&self, job: &Job, source_dir: &str) -> Result<(), String> {
+    fn run_job(&self, job: &mut Job, source_dir: &str) -> Result<(), String> {
         let path = Path::new(job.source_path.as_str());
         let sub_path = match path.strip_prefix(source_dir) {
             Ok(sp) => sp,
@@ -209,6 +208,8 @@ impl BatchJob {
             ));
         }
 
+        job.destination_path = String::from(out_path.to_str().unwrap());
+
         Ok(())
     }
 
@@ -226,34 +227,5 @@ impl BatchJob {
         }
 
         Ok(())
-    }
-
-    fn convert_video(&self, source_filepath: &Path, output_dir: &str) {
-        let mut out_file = PathBuf::new();
-        out_file.push(output_dir);
-        out_file.push(source_filepath.file_stem().unwrap());
-        out_file.set_extension("mp4");
-
-        let mut output = Command::new("ffmpeg")
-            .arg("-loglevel")
-            .arg("warning")
-            .arg("-i")
-            .arg(source_filepath)
-            .arg("-y")
-            .arg("-c:v")
-            .arg("libx264")
-            .arg("-preset")
-            .arg("ultrafast")
-            .arg("-framerate")
-            .arg("30")
-            .arg("-vsync")
-            .arg("1")
-            .arg("-crf")
-            .arg("20")
-            .arg(out_file.as_path())
-            .spawn()
-            .unwrap_or_else(|e| panic!("failed to execute process: {}", e));
-
-        output.wait().unwrap();
     }
 }
