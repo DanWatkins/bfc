@@ -94,7 +94,7 @@ fn run(arg_matches: &clap::ArgMatches) -> Result<(), Box<std::error::Error>> {
         }
     };
 
-    let mut bj = BatchJob::load_from_file(dir.as_str())?;
+    let mut bj = batch_job::load_from_file(dir.as_str())?;
     bj.run();
 
     Ok(())

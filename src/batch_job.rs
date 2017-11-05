@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 use std::fs::{self, DirEntry, File};
 use std::io::Read;
 use std::io::Write;
@@ -25,6 +26,31 @@ pub struct Job {
     destination_sha256sum: String,
 
     status: JobStatus,
+}
+
+#[derive(Debug)]
+struct BatchJobError {
+    message: String,
+}
+
+impl BatchJobError {
+    pub fn new(message: &str) -> BatchJobError {
+        BatchJobError {
+            message: String::from(message),
+        }
+    }
+}
+
+impl Error for BatchJobError {
+    fn description(&self) -> &str {
+        self.message.as_str()
+    }
+}
+
+impl fmt::Display for BatchJobError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.message.as_str())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -53,20 +79,31 @@ impl BatchJob {
     }
 
     pub fn init(&mut self) -> Result<(), Box<Error>> {
-        let mut lst = vec![];
+        let mut file_paths = vec![];
 
-        // flatten
+        // enumerate files
         {
-            let mut add_it = |x: &DirEntry| {
-                lst.push(x.path());
-            };
-
+            let mut add_it = |x: &DirEntry| file_paths.push(x.path());
             self.visit_dirs(Path::new(&self.source_dir.trim()), &mut add_it)?;
         }
 
-        println!("scanned {} files", lst.len());
+        // error if source directory already contains a dbfc.config file
+        {
+            let cp = config_path(&self.source_dir);
+            if file_paths
+                .iter()
+                .find(|ref w| w.to_str().unwrap() == cp)
+                .is_some()
+            {
+                return Err(Box::new(BatchJobError::new(
+                    "This directory has already been configured",
+                )));
+            }
+        }
 
-        for file in lst.iter() {
+        println!("scanned {} files", file_paths.len());
+
+        for file in file_paths.iter() {
             let source_path = file.to_str().unwrap();
             println!("processing {}", source_path);
             let mut file = File::open(source_path).expect("Unable to create config file");
@@ -86,20 +123,10 @@ impl BatchJob {
         Ok(())
     }
 
-    pub fn load_from_file(dir: &str) -> Result<BatchJob, Box<Error>> {
-        let filepath = format!("{}/dbfc.config", dir);
-        let mut file = File::open(filepath)?;
-        let mut buffer = String::new();
-        file.read_to_string(&mut buffer)?;
-        let bj: BatchJob = serde_json::from_str(&buffer)?;
-
-        Ok(bj)
-    }
-
     pub fn save_to_file(&self) -> Result<(), Box<Error>> {
         let json_result = serde_json::to_string_pretty(&self)?;
 
-        let config_filepath = format!("{}/dbfc.config", self.source_dir);
+        let config_filepath = config_path(&self.source_dir);
         let mut file = File::create(config_filepath).expect("Unable to create config file");
         file.write_all(json_result.as_bytes())
             .expect("Unable to write to config file");
@@ -228,4 +255,18 @@ impl BatchJob {
 
         Ok(())
     }
+}
+
+pub fn config_path(dir: &str) -> String {
+    format!("{}/dbfc.config", dir)
+}
+
+pub fn load_from_file(dir: &str) -> Result<BatchJob, Box<Error>> {
+    let filepath = config_path(&dir);
+    let mut file = File::open(filepath)?;
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+    let bj: BatchJob = serde_json::from_str(&buffer)?;
+
+    Ok(bj)
 }
