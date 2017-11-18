@@ -27,7 +27,6 @@ fn main() {
                         .short("s")
                         .long("source")
                         .takes_value(true)
-                        .required(true),
                 )
                 .arg(
                     Arg::with_name("destination_path")
@@ -75,10 +74,18 @@ fn main() {
 
     if let Some(matches_init) = matches.subcommand_matches("init") {
         let name = matches_init.value_of("name").unwrap();
-        let source_path = matches_init.value_of("source_path").unwrap();
         let destination_path = matches_init.value_of("destination_path").unwrap();
 
-        let mut bj = BatchJob::new(name, source_path, destination_path);
+        // use the current directory unless dir has been specified
+        let source_path: String = match matches_init.value_of("source_path") {
+            Some(v) => String::from(v),
+            None => {
+                let cd = env::current_dir().unwrap();
+                String::from(cd.as_path().to_str().unwrap())
+            }
+        };
+
+        let mut bj = BatchJob::new(name, &source_path, destination_path);
 
         if let Err(e) = bj.init() {
             println!("Error occured while running batch job:\n{}", e);
