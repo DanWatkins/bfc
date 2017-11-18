@@ -3,29 +3,32 @@ Distrubted batch file conversion
 
 ## Usage
 
-Initialize dbfc in a root directory for a hierarchy of files to convert.
+Initialize a dbfc batch job for the current directory:
 
 ```
-$ dbfc job encode_videos_job
-Created new job encode_videos_job
-Current job is now encode_videos_job
+$ dbfc init batch_job1 -d=/path/to/output/files
 ```
 
-Add a conversion rule for a file type:
+Edit `.dbfc/batch_job1.bj` by adding a rule to the `rules` list. In this example, the rule will run for all files of type `avi`. The `ffmpeg` program will be ran as a child process provided it is installed and in the PATH. The variable `$file_path` will be replaced at runtime with the path to the file being processed. The variable `$file_path_out` will be replaced with a new filepath using the same filename but with a path inside the initialized destination directory.
 
 ```
-# dbfc rule -t [FILE_EXTENSION] -c [COMMAND]
-
-$ dbfc rule -t mp4 -c 'ffmpeg -i $file_path -c:v libx265 $out_file_path.mp4'
+"rules": {
+    "avi": "ffmpeg -i $file_path -c:v libx264 -preset slow $file_path_out"
+}
 ```
 
-Run conversion:
+Run the batch job:
 
 ```
-$ dbfc run
-    Running encode_videos_job...
-        20080915.avi
-        20081019.avi
-    3 of 7 converted, 0%
-        press [q] to quit
+$ dbfc run batch_job1
 ```
+
+## Rule Variables
+
+### file_path
+
+The absolute path to the file being processed.
+
+### file_path_out
+
+The absolute path to where the file should be written to.
