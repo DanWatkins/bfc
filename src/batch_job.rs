@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::fs::{self, DirEntry, File};
+use std::fs::{self, DirEntry, File, OpenOptions};
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -81,11 +81,15 @@ impl BatchJob {
     }
 
     fn config_dir(source_dir: &str) -> PathBuf {
-        Path::new(source_dir).join("dbfc")
+        Path::new(source_dir).join(".dbfc")
     }
 
     fn filepath(source_dir: &str, name: &str) -> PathBuf {
         BatchJob::config_dir(source_dir).join(format!("{}.bj", name))
+    }
+
+    fn filepath_log(source_dir: &str, name: &str) -> PathBuf {
+        BatchJob::config_dir(source_dir).join(format!("{}.log", name))
     }
 
     pub fn init(&mut self) -> Result<(), Box<Error>> {
@@ -145,7 +149,9 @@ impl BatchJob {
 
     pub fn load_from_file(dir: &str, name: &str) -> Result<BatchJob, Box<Error>> {
         if !Path::new(dir).exists() {
-            return Err(Box::new(BatchJobError::new(&format!("Directory {:?} does not exist", dir))));
+            return Err(Box::new(BatchJobError::new(
+                &format!("Directory {:?} does not exist", dir),
+            )));
         }
 
         let filepath = BatchJob::filepath(dir, name);
@@ -170,6 +176,10 @@ impl BatchJob {
         for job_ref in pending_jobs {
             let mut job = job_ref.borrow_mut();
 
+            if let Err(why) = self.write_log_text(&format!("{}", job.source_path)) {
+                println!("Unable to write to log file: {}\n", why);
+            }
+
             match self.run_job(&mut job, self.source_dir.as_str()) {
                 Ok(_) => {
                     job.status = JobStatus::Done;
@@ -177,7 +187,12 @@ impl BatchJob {
                 Err(why) => {
                     job.status = JobStatus::Error;
                     println!("   {}", why);
+                    self.write_log_text(&why);
                 }
+            }
+
+            if let Err(why) = self.write_log_text("\n\n") {
+                println!("Unable to write to log file: {}", why);
             }
         }
 
@@ -191,39 +206,38 @@ impl BatchJob {
         let sub_path = match path.strip_prefix(source_dir) {
             Ok(sp) => sp,
             Err(e) => {
-                return Err(format!("   Could not get sub-path: {}", e));
+                return Err(format!("Could not get sub-path: {}", e));
             }
         };
 
         println!("Processing: {:?}", sub_path);
 
         if !path.exists() {
-            return Err(format!("   Path does not exist"));
+            return Err(format!("Path does not exist"));
         } else if !path.is_file() {
-            return Err(format!("   Path is not a file"));
+            return Err(format!("Path is not a file"));
         }
 
         let extension = match path.extension() {
             Some(e) => match e.to_str() {
                 Some(es) => es,
                 None => {
-                    return Err(format!("   Error converting to string"));
+                    return Err(format!("Error converting to string"));
                 }
             },
             None => {
-                return Err(format!("   No extension"));
+                return Err(format!("No extension"));
             }
         };
 
         let rule = match self.rules.get(extension) {
             Some(r) => r,
             None => {
-                return Err(format!("   No rule defined for extension '{}'", extension));
+                return Err(format!("No rule defined for extension '{}'", extension));
             }
         };
 
         let out_path = Path::new(self.destination_dir.as_str()).join(sub_path);
-        println!("   Writting to {:?}", out_path);
 
         // get args and replace any variables
         let raw_args: Vec<&str> = rule.split_whitespace().collect();
@@ -235,11 +249,10 @@ impl BatchJob {
                 _ => arg,
             }));
         }
-        println!("   {:?}", args);
 
         // create the output path
         if let Err(why) = fs::create_dir_all(out_path.parent().unwrap()) {
-            return Err(format!("   Unable to create out file directory: {}", why));
+            return Err(format!("Unable to create out file directory: {}", why));
         }
 
         let command_name = String::from(args[0].as_str());
@@ -249,12 +262,17 @@ impl BatchJob {
             .output()
             .expect(format!("Failed to execute command").as_str());
 
-        println!("stdout: {}", String::from_utf8_lossy(&command.stdout));
-        println!("stderr: {}", String::from_utf8_lossy(&command.stderr));
+        if let Err(why) = self.write_log_text(&String::from_utf8_lossy(&command.stdout)) {
+            return Err(format!("Unable to write to log file: {}", why));
+        }
+
+        if let Err(why) = self.write_log_text(&String::from_utf8_lossy(&command.stderr)) {
+            return Err(format!("Unable to write to log file: {}", why));
+        }
 
         if !command.status.success() {
             return Err(format!(
-                "    Command '{}' failed with exit code {:?}",
+                "Command '{}' failed with exit code {:?}",
                 &command_name,
                 command.status.code()
             ));
@@ -277,6 +295,18 @@ impl BatchJob {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn write_log_text(&self, text: &str) -> Result<(), Box<Error>> {
+        let log_file_path = BatchJob::filepath_log(&self.source_dir, &self.name);
+        let mut log_file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&log_file_path)
+            .unwrap();
+        log_file.write_all(text.as_bytes())?;
 
         Ok(())
     }

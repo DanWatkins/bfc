@@ -26,7 +26,7 @@ fn main() {
                     Arg::with_name("source_path")
                         .short("s")
                         .long("source")
-                        .takes_value(true)
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("destination_path")
